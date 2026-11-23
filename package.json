@@ -1,0 +1,22 @@
+{
+  "name": "vidya-mailportal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mail portal for a self-hosted Postfix + Dovecot server: an administrator manages mailboxes, users read and send mail.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcryptjs": "2.4.3",
+    "express": "4.22.3",
+    "express-rate-limit": "7.5.1",
+    "express-session": "1.19.0",
+    "imapflow": "2.11.0",
+    "mailparser": "3.14.2",
+    "nodemailer": "10.4.0"
+  }
+}

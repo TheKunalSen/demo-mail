@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.env
+# Server configuration lives in /etc/mailportal on the server. Never commit it.
+env
+admin.json
+state.json

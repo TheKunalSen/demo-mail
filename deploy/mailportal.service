@@ -1,0 +1,21 @@
+[Unit]
+Description=Mail portal (mailbox admin and webmail)
+After=network.target dovecot.service postfix.service
+Wants=dovecot.service postfix.service
+
+[Service]
+Type=simple
+User=mailportal
+Group=mailportal
+WorkingDirectory=/opt/mailportal
+EnvironmentFile=/etc/mailportal/env
+ExecStart=@NODE@ /opt/mailportal/server.js
+Restart=on-failure
+RestartSec=3
+PrivateTmp=true
+# No NoNewPrivileges/ProtectSystem/ProtectHome here: the account helper runs through sudo
+# and must create home directories and edit /etc/passwd. Root access is limited instead by
+# /etc/sudoers.d/mailportal, which allows exactly one script.
+
+[Install]
+WantedBy=multi-user.target

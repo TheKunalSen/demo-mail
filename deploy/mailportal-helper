@@ -1,0 +1,74 @@
+#!/bin/bash
+# mailportal-helper: the only root-level actions the mail portal can perform.
+# Installed as /usr/local/sbin/mailportal-helper (root-owned, mode 0700) and allowed
+# for the "mailportal" service account in /etc/sudoers.d/mailportal.
+# It manages accounts in the "mailusers" group and refuses every other account,
+# so the portal can never change root, your admin login, or system users.
+set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+GROUP=mailusers
+ACTION="${1:-}"
+NAME="${2:-}"
+PW=""
+
+die() { echo "$1" >&2; exit "${2:-1}"; }
+valid_name() { [[ "$1" =~ ^[a-z][a-z0-9_-]{1,31}$ ]]; }
+# A managed account: a normal user (uid 1000-59999) in the mailusers group and in no
+# administrator group. Anything else is off limits, even if someone adds it to mailusers.
+managed() {
+  local uid groups
+  uid=$(id -u "$1" 2>/dev/null) || return 1
+  (( uid >= 1000 && uid < 60000 )) || return 1
+  groups=" $(id -nG "$1") "
+  [[ "$groups" == *" $GROUP "* ]] || return 1
+  case "$groups" in *" sudo "*|*" admin "*|*" wheel "*|*" root "*) return 1 ;; esac
+  return 0
+}
+read_password() {
+  IFS= read -r PW || true
+  [[ ${#PW} -ge 8 && ${#PW} -le 128 ]] || die "password must be 8-128 characters" 2
+}
+
+case "$ACTION" in
+  list)
+    for u in $(getent group "$GROUP" | cut -d: -f4 | tr ',' ' '); do
+      if managed "$u"; then echo "$u"; fi
+    done | sort
+    ;;
+
+  create)
+    valid_name "$NAME" || die "invalid username" 2
+    if getent passwd "$NAME" >/dev/null || getent group "$NAME" >/dev/null; then die "user exists" 3; fi
+    if postalias -q "$NAME" hash:/etc/aliases >/dev/null 2>&1; then die "name is already a mail alias" 3; fi
+    read_password
+    useradd --create-home --shell /usr/sbin/nologin --groups "$GROUP" "$NAME"
+    printf '%s:%s\n' "$NAME" "$PW" | chpasswd
+    # /etc/skel/Maildir normally provides this; create it if skel lacks it.
+    if [[ ! -d "/home/$NAME/Maildir" ]]; then
+      install -d -o "$NAME" -g "$NAME" -m 0700 "/home/$NAME/Maildir" "/home/$NAME/Maildir/cur" "/home/$NAME/Maildir/new" "/home/$NAME/Maildir/tmp"
+    fi
+    ;;
+
+  passwd)
+    valid_name "$NAME" || die "invalid username" 2
+    managed "$NAME" || die "not a portal mailbox" 4
+    read_password
+    printf '%s:%s\n' "$NAME" "$PW" | chpasswd
+    ;;
+
+  delete)
+    valid_name "$NAME" || die "invalid username" 2
+    managed "$NAME" || die "not a portal mailbox" 4
+    # End any open IMAP/POP3 sessions owned by the account, or userdel refuses.
+    pkill -KILL -u "$NAME" 2>/dev/null || true
+    sleep 0.5
+    userdel --remove "$NAME" 2>/dev/null || true
+    if getent passwd "$NAME" >/dev/null; then die "could not delete user" 1; fi
+    rm -f "/var/mail/$NAME"
+    ;;
+
+  *)
+    die "usage: mailportal-helper list | create NAME | passwd NAME | delete NAME" 2
+    ;;
+esac
